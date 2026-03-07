@@ -1,189 +1,305 @@
-const {
-    Client,
-    GatewayIntentBits,
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    StringSelectMenuBuilder,
-    ChannelType,
-    PermissionFlagsBits
-} = require('discord.js'); // Corrigido de 'exige'
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, PermissionsBitfield, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, Collection } = require('discord.js');
 
-const client = new Client({ // Corrigido de 'novo Client'
-    intents: [ // Corrigido de 'INTENÇÕES'
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.GuildInvites 
     ],
 });
 
-// ================== CONFIGURAÇÕES ==================
-// Se o token estiver na aba Variables do Railway, use: process.env.TOKEN
-const TOKEN = process.env.TOKEN || 'SEU_TOKEN_AQUI'; 
-const SEU_ID_ADM = '1395856611658043576';
-const FOTO_VORTEX = 'https://i.imgur.com/8N4N3u8.png';
-
-const TABELA_PIX = {
- "7.00": "00020126420014BR.GOV. BCB. PIX0120lealikaro9@gmail.com52040000530398654047.005802BR5925Francisco Ikaro Leal Pess6009SAO PAULO62140510zbg8O0noZT630442E8",
- "19.00": "00020126420014BR.GOV. BCB. PIX0120lealikaro9@gmail.com520400005303986540519.005802BR5925Francisco Ikaro Leal Pess6009SAO PAULO62140510EseuSC4L2t6304E569",
- "45.00": "00020126420014BR.GOV. BCB. PIX0120lealikaro9@gmail.com520400005303986540545.005802BR5925Francisco Ikaro Leal Pess6009SAO PAULO62140510YQMtyfXQx16304DE61"
+// ==========================================
+//           CENTRAL DE LICENÇAS (VENDAS)
+// ==========================================
+const LICENCAS = {
+    "1473287580840886430": { expira: "15/06/2026" },
+    "ID_DO_SERVE_2": { expira: "01/01/2026" },
+    "ID_DO_SERVE_3": { expira: "01/01/2026" },
+    "ID_DO_SERVE_4": { expira: "01/01/2026" },
+    "ID_DO_SERVE_5": { expira: "01/01/2026" },
+    "ID_DO_SERVE_6": { expira: "01/01/2026" },
+    "ID_DO_SERVE_7": { expira: "01/01/2026" },
+    "ID_DO_SERVE_8": { expira: "01/01/2026" }
 };
 
-// ================== BOT ONLINE ==================
-client.once('ready', () => console.log(' ✅ Bot Online! Francisco Ikaro Store Pronto.'));
+function verificarLicenca(guildId) {
+    if (!guildId) return false;
+    const licenca = LICENCAS[guildId];
+    if (!licenca) return false;
 
-// ================== PAINEL DE VENDAS E TICKETS ==================
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return; // Corrigido de 'se' e 'retornar'
+    try {
+        const [dia, mes, ano] = licenca.expira.split('/').map(Number);
+        const dataExpiracao = new Date(ano, mes - 1, dia, 23, 59, 59);
+        return new Date() <= dataExpiracao;
+    } catch (e) { return false; }
+}
 
-    // Painel de venda
-    if (message.content === '!painel') {
-        const embedLoja = new EmbedBuilder() // Corrigido de 'novo'
-            .setColor(0x5865F2) // Corrigido de 'setCor'
-            .setTitle('🎁 Bot de Filas - Nulla Store')
-            .setDescription('* Filas 1x1 a 5x5.\n* Sistema de mediador e Streamers.\n* Painel de Pix e perfil.')
-            .setImage('https://i.imgur.com/vHqY7Z9.png') // Corrigido de 'imagem-de-se'
-            .setFooter({ text: 'Nulla Store' }); // Corrigido de 'texto'
+const ID_CARGO_SUPORTE = "ID_DO_SUPORTE"; 
+const ID_CARGO_ANALISTA = "ID_DO_ANALISTA"; 
+const ID_DONO_SISTEMA = "SEU_ID_AQUI"; 
+const TAXA_ADM = 0.10; 
+const ID_CANAL_CONVITES = "ID_DO_CANAL_SEUS_CONVITES";
 
-        const botaoCompra = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('comprar_bot').setLabel('Comprar').setEmoji('💸').setStyle(ButtonStyle.Success)
-        );
-        await message.channel.send({ embeds: [embedLoja], components: [botaoCompra] });
+const NOMES_CANAIS = {
+    "tecnico": "📩-suporte",
+    "reembolso": "💰-reembolso",
+    "vagas": "🤝-vagas-mediador",
+    "receber": "🔔-receber-evento",
+    "planos": "🎫-tickets"
+};
+
+let filas = {}; 
+let filaMediadores = []; 
+let confirmacoesPartida = new Map(); 
+let bancoDadosPix = new Map(); 
+let ticketsAssumidos = new Map();
+let mensagensAnuncio = []; 
+const guildInvites = new Map();
+let cacheSala = new Map();
+let ranking = new Map();
+
+client.once('ready', async () => { 
+    console.log('✅ SISTEMA AURA ATIVO!'); 
+    for (const [guildId, guild] of client.guilds.cache) {
+        try {
+            const firstInvites = await guild.invites.fetch();
+            guildInvites.set(guildId, new Map(firstInvites.map((invite) => [invite.code, invite.uses])));
+        } catch (e) { console.log(`Erro ao carregar convites da guild ${guildId}`); }
     }
 
-    // Painel de tickets
-    if (message.content === '!painel_ticket') {
-        const embedTicket = new EmbedBuilder()
-            .setColor(0xFFB400)
-            .setTitle('🎫 Central de Atendimento')
-            .setDescription('Precisa de ajuda? Escolha uma categoria abaixo para abrir um ticket.');
+    setInterval(async () => {
+        if (filaMediadores.length > 0) {
+            for (const msg of mensagensAnuncio) {
+                try { await msg.delete(); } catch (e) {}
+            }
+            mensagensAnuncio = [];
+            const canaisFila = ['1v1-mobile', '1v1-emulador', '2v2-mobile', '2v2-emulador', 'tatico']; 
+            client.channels.cache.forEach(async (canal) => {
+                if (!verificarLicenca(canal.guild?.id)) return;
+                if (canaisFila.some(nome => canal.name.toLowerCase().includes(nome)) && canal.type === ChannelType.GuildText) {
+                    try {
+                        const msg = await canal.send('# 🟢 FILAS ON-LINE\n# ✅ MEDIADORES DISPONÍVEIS');
+                        mensagensAnuncio.push(msg);
+                    } catch (e) {}
+                }
+            });
+        }
+    }, 300000); 
+});
 
-        const menuTicket = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId('selecionar_ticket')
-                .setPlaceholder('📋 Selecione o motivo do contato')
-                .addOptions([
-                    { label: '⚒️ Suporte técnico', value: 'suporte' },
-                    { label: '💰 Dúvida sobre planos', value: 'duvida_planos' },
-                    { label: '📄 Problema com pagamento', value: 'problema_pagamento' },
-                    { label: '❓ Outro', value: 'outro' },
-                ])
-        );
-
-        await message.channel.send({ embeds: [embedTicket], components: [menuTicket] });
+client.on('guildMemberAdd', async (member) => {
+    if (!verificarLicenca(member.guild.id)) return;
+    const cachedInvites = guildInvites.get(member.guild.id);
+    const newInvites = await member.guild.invites.fetch();
+    const invite = newInvites.find(i => i.uses > (cachedInvites.get(i.code) || 0));
+    guildInvites.set(member.guild.id, new Map(newInvites.map((invite) => [invite.code, invite.uses])));
+    if (invite) {
+        const canalLog = member.guild.channels.cache.get(ID_CANAL_CONVITES);
+        if (canalLog) {
+            const embedInvite = new EmbedBuilder()
+                .setTitle(`⚡ ENTROU NA ORG MILOKA ⚡`)
+                .setColor('#ff9900')
+                .setDescription(`🔥 | Convidado: <@${member.id}>\n🔥 | Indicador: <@${invite.inviter.id}>\n🔥 | Indicou: ${invite.uses} invites.`);
+            canalLog.send({ embeds: [embedInvite] });
+        }
     }
 });
 
-// ================== INTERACTIONS ==================
+function criarEmbedAdm() {
+    const lista = filaMediadores.length > 0 ? filaMediadores.map((id, index) => `**${index + 1}º.** <@${id}>`).join('\n') : ' ';
+    return new EmbedBuilder().setTitle('Entrar em espera...').setColor('#2b2d31').setDescription(`**Mediadores presentes:**\n${lista}`).setFooter({ text: 'Aura System' });
+}
+
+function criarEmbedFila(categoria, modo, valor) {
+    const idFilaVisual = `${categoria}_${valor}`;
+    if (!filas[idFilaVisual]) filas[idFilaVisual] = [];
+    const listaJogadores = filas[idFilaVisual].length > 0 ? filas[idFilaVisual].map((user, index) => {
+        return `**${index + 1}º** <@${user.id}> | ${user.modo}`;
+    }).join('\n') : '*Vazia*';
+    return new EmbedBuilder().setTitle(`${modo} | ${categoria.toUpperCase()} | AURA`).setColor('#7000FF').addFields({ name: '💰 Valor:', value: `R$ ${valor}`, inline: true }, { name: '👤 Jogadores na Fila:', value: listaJogadores, inline: false });
+}client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+    if (!verificarLicenca(message.guild.id)) return;
+
+    if (message.content.toLowerCase().startsWith('.p')) {
+        const target = message.mentions.users.first() || message.author;
+        const stats = ranking.get(target.id) || { vitorias: 0, derrotas: 0, consecutivas: 0, total: 0 };
+        const embedPerfil = new EmbedBuilder()
+            .setAuthor({ name: `Perfil de ${target.username}`, iconURL: target.displayAvatarURL() })
+            .setColor('#1a1aff')
+            .setDescription(`**Estatísticas de pontos**\n\n**Vitórias:** ${stats.vitorias} ・ **Derrotas:** ${stats.derrotas}\n**Consecutivas:** ${stats.consecutivas} ・ **Total:** ${stats.total}`);
+        return message.reply({ embeds: [embedPerfil] });
+    }
+
+    if (message.content.toLowerCase() === '.aux') {
+        if (!message.channel.isThread()) return;
+        const rowAux = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('menu_auxiliar')
+                .setPlaceholder('Painel Auxiliar do Mediador')
+                .addOptions([
+                    { label: 'Escolher Vencedor', value: 'escolher_vencedor', emoji: '🏆' },
+                    { label: 'Fechar Sala', value: 'fechar_sala_adm', emoji: '🗑️' }
+                ])
+        );
+        await message.channel.send({ embeds: [new EmbedBuilder().setTitle("O que deseja fazer?").setColor("#2b2d31")], components: [rowAux] });
+    }
+
+    if (message.channel.isThread()) {
+        const texto = message.content.trim();
+        const idMatch = texto.match(/\b\d{9}\b/);
+        if (idMatch && texto.length > 9) {
+            const idSala = idMatch[0];
+            const senhaSala = texto.replace(idSala, '').trim();
+            if (senhaSala.length > 0) return anunciarSala(message, idSala, senhaSala);
+        }
+        if (idMatch && texto.length === 9) {
+            cacheSala.set(message.channel.id, idMatch[0]);
+            return;
+        }
+        if (cacheSala.has(message.channel.id) && !idMatch && texto.length <= 10) {
+            const idSala = cacheSala.get(message.channel.id);
+            const senhaSala = texto;
+            cacheSala.delete(message.channel.id);
+            return anunciarSala(message, idSala, senhaSala);
+        }
+    }
+});
+
+async function anunciarSala(message, id, senha) {
+    const dados = confirmacoesPartida.get(message.channel.id);
+    const mencao = dados ? `<@${dados.jogadores[0]}>, <@${dados.jogadores[1]}>` : "";
+    try {
+        const mensagens = await message.channel.messages.fetch({ limit: 20 });
+        await message.channel.bulkDelete(mensagens);
+    } catch (e) { await message.delete().catch(() => {}); }
+    const embed = new EmbedBuilder()
+        .setTitle('🎮 SALA CRIADA - AURA').setColor('#00FFFF')
+        .setDescription(`${mencao}\n\nA sala foi criada! Entrem imediatamente.`)
+        .addFields({ name: '🆔 ID DA SALA:', value: `\`${id}\``, inline: true }, { name: '🔑 SENHA:', value: `\`${senha}\``, inline: true }, { name: '⏰ AVISO:', value: 'A sala inicia em **3 minutos**!', inline: false })
+        .setFooter({ text: 'Aura System - Bom jogo!' });
+    await message.channel.send({ content: mencao, embeds: [embed] });
+}
+
 client.on('interactionCreate', async (interaction) => {
+    if (!interaction.guild) return;
+    if (!verificarLicenca(interaction.guild.id)) return interaction.reply({ content: "❌ Licença inativa.", ephemeral: true });
 
-    // Botão de comprar
-    if (interaction.isButton() && interaction.customId === 'comprar_bot') {
-        const menuPlanos = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId('selecionar_plano')
-                .setPlaceholder('📋 Escolha seu plano')
-                .addOptions([
-                    { label: 'Semanal - R$ 7,00', value: '7.00', emoji: '⏳' },
-                    { label: 'Mensal - R$ 19,00', value: '19.00', emoji: '🗓️' },
-                    { label: 'Trimestral - R$ 45,00', value: '45.00', emoji: '🏆' },
-                ])
-        );
-        return interaction.reply({ content: 'Selecione o plano:', components: [menuPlanos], ephemeral: true });
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_config_pix') {
+        const dados = { chave: interaction.fields.getTextInputValue('chave_pix'), modelo: interaction.fields.getTextInputValue('modelo_pix'), nome: interaction.fields.getTextInputValue('nome_pix'), qrcode: interaction.fields.getTextInputValue('qr_pix') || "Não configurado" };
+        bancoDadosPix.set(interaction.user.id, dados);
+        return interaction.reply({ content: "✅ Seu PIX foi salvo!", ephemeral: true });
     }
 
-    // Seleção de plano de venda
-    if (interaction.isStringSelectMenu() && interaction.customId === 'selecionar_plano') {
+    if (interaction.customId === 'verificar_status_pix') {
+        const pix = bancoDadosPix.get(interaction.user.id);
+        if (!pix) return interaction.reply({ content: "❌ Sem PIX.", ephemeral: true });
+        const embedStatus = new EmbedBuilder().setTitle('📌 Seus Dados').setColor('#2b2d31').addFields({ name: '👤 Nome:', value: pix.nome, inline: true }, { name: '📂 Tipo:', value: pix.modelo, inline: true }, { name: '🔑 Chave:', value: `\`${pix.chave}\``, inline: false });
+        return interaction.reply({ embeds: [embedStatus], ephemeral: true });
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'menu_auxiliar') {
+        const escolha = interaction.values[0];
+        const dados = confirmacoesPartida.get(interaction.channel.id);
+        if (escolha === 'fechar_sala_adm') {
+            await interaction.reply("⚠️ Fechando...");
+            setTimeout(() => interaction.channel.delete().catch(() => {}), 3000);
+        }
+        if (escolha === 'escolher_vencedor') {
+            if (!filaMediadores.includes(interaction.user.id)) return interaction.reply({ content: "❌ Só mediadores.", ephemeral: true });
+            if (!dados) return interaction.reply({ content: "❌ Sem registro.", ephemeral: true });
+            const p1 = interaction.guild.members.cache.get(dados.jogadores[0])?.user.username || "Jogador 1";
+            const p2 = interaction.guild.members.cache.get(dados.jogadores[1])?.user.username || "Jogador 2";
+            const rowVence = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`venceu_${dados.jogadores[0]}`).setLabel(`Venceu: ${p1}`).setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`venceu_${dados.jogadores[1]}`).setLabel(`Venceu: ${p2}`).setStyle(ButtonStyle.Success));
+            await interaction.reply({ content: "Quem venceu?", components: [rowVence], ephemeral: true });
+        }
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === 'menu_atendimento') {
         await interaction.deferReply({ ephemeral: true });
-        const valor = interaction.values[0];
-        const pixCopiaECola = TABELA_PIX[valor];
-        const nomePlano = valor === "7.00" ? "Semanal" : valor === "19.00" ? "Mensal" : "Trimestral";
-        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(pixCopiaECola)}`;
-
-        const channel = await interaction.guild.channels.create({
-            name: `🛒-${interaction.user.username}`,
-            type: ChannelType.GuildText,
-            permissionOverwrites: [
-                { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-            ],
-        });
-
-        const embedCheckout = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(`🛒 Pagamento — Bot Completo ${nomePlano.toUpperCase()}`)
-            .setThumbnail(FOTO_VORTEX)
-            .setDescription(`Pagamento Instantâneo via PIX\n\n🧊 **Plano:** Orbital\n🕒 **Período:** ${nomePlano}\n💵 **Valor:** R$ ${valor.replace('.', ',')}\n\nCopie o código abaixo e cole no app do seu banco para pagar.`)
-            .setImage(qrCodeUrl);
-
-        const botoes = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('copy_pix').setLabel('Copiar Código PIX').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('confirmar_pagamento').setLabel('Confirmar Pagamento').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('cancelar_compra').setLabel('Cancelar').setStyle(ButtonStyle.Danger)
-        );
-
-        const msgOriginal = await channel.send({ content: `${interaction.user}`, embeds: [embedCheckout], components: [botoes] });
-        await interaction.editReply({ content: `✅ Carrinho criado: ${channel}` });
-
-        const collector = msgOriginal.createMessageComponentCollector();
-        collector.on('collect', async i => {
-            if (i.customId === 'copy_pix') {
-                if (i.user.id !== interaction.user.id) return i.reply({ content: 'Apenas o comprador pode copiar.', ephemeral: true });
-                await i.reply({ content: `${pixCopiaECola}`, ephemeral: true });
-            }
-            if (i.customId === 'cancelar_compra') {
-                if (i.user.id !== interaction.user.id) return i.reply({ content: 'Apenas o comprador pode cancelar.', ephemeral: true });
-                await channel.delete().catch(() => {});
-            }
-            if (i.customId === 'confirmar_pagamento') {
-                if (i.user.id !== SEU_ID_ADM) return i.reply({ content: '❌ Apenas o Administrador pode confirmar.', ephemeral: true });
-                await msgOriginal.delete().catch(() => {});
-                await channel.send({ content: `✅ **Pagamento confirmado!** Obrigado pelo plano **Bot Completo ${nomePlano}**! 🎉` });
-            }
-        });
+        const tipoTicket = interaction.values[0]; 
+        const nomeAlvo = NOMES_CANAIS[tipoTicket];
+        const canalAlvo = interaction.guild.channels.cache.find(c => c.name.includes(nomeAlvo));
+        if (!canalAlvo) return interaction.editReply({ content: `❌ Canal não achado.` });
+        try {
+            const thread = await canalAlvo.threads.create({ name: `📩・${tipoTicket}-${interaction.user.username}`, type: ChannelType.PrivateThread });
+            await thread.members.add(interaction.user.id);
+            const rowBotoes = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('finalizar_ticket').setLabel('Fechar').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('assumir_ticket').setLabel('Assumir').setStyle(ButtonStyle.Secondary));
+            await thread.send({ content: `🚨 <@&${ID_CARGO_SUPORTE}>`, components: [rowBotoes] });
+            return interaction.editReply({ content: `✅ Ticket aberto!` });
+        } catch (e) { return interaction.editReply({ content: `❌ Erro.` }); }
     }
 
-    // Seleção do ticket
-    if (interaction.isStringSelectMenu() && interaction.customId === 'selecionar_ticket') {
-        const valor = interaction.values[0];
-        const nomeCategoria = {
-            suporte: '⚒️ Suporte Técnico',
-            duvida_planos: '💰 Dúvida sobre Planos',
-            problema_pagamento: '📄 Problema com Pagamento',
-            outro: '❓ Outro'
-        }[valor];
+    if (!interaction.isButton()) return;
 
-        const channel = await interaction.guild.channels.create({
-            name: `🎫-${interaction.user.username}`,
-            type: ChannelType.GuildText,
-            permissionOverwrites: [
-                { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-            ],
-        });
-
-        const botaoCancelar = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('cancel_ticket').setLabel('Cancelar Ticket').setStyle(ButtonStyle.Danger)
-        );
-
-        await channel.send({
-            content: `${interaction.user}\nCategoria selecionada: **${nomeCategoria}**`,
-            embeds: [new EmbedBuilder()
-                .setTitle('Ticket aberto')
-                .setDescription('Aguarde a resposta de um atendente.')
-                .setColor(0xFFB400)
-            ],
-            components: [botaoCancelar]
-        });
-
-        await interaction.reply({ content: `✅ Ticket criado: ${channel}`, ephemeral: true });
+    if (interaction.customId.startsWith('venceu_')) {
+        const vId = interaction.customId.split('_')[1]; 
+        const dadosPartida = confirmacoesPartida.get(interaction.channel.id);
+        if (dadosPartida) {
+            const dId = dadosPartida.jogadores.find(id => id !== vId);
+            let statsV = ranking.get(vId) || { vitorias: 0, derrotas: 0, consecutivas: 0, total: 0 };
+            statsV.vitorias += 1; statsV.total += 1; ranking.set(vId, statsV);
+            let statsD = ranking.get(dId) || { vitorias: 0, derrotas: 0, consecutivas: 0, total: 0 };
+            statsD.derrotas += 1; statsD.total += 1; ranking.set(dId, statsD);
+            await interaction.channel.send(`# 🏆 VENCEDOR: <@${vId}>`);
+        }
+        return interaction.reply({ content: "Computado.", ephemeral: true });
     }
 
-    // Cancelar Ticket
-    if (interaction.isButton() && interaction.customId === 'cancel_ticket') {
-        await interaction.channel.delete().catch(() => {});
+    if (interaction.customId === 'confirmar_inicio') {
+        let dados = confirmacoesPartida.get(interaction.channel.id);
+        if (!dados || !dados.jogadores.includes(interaction.user.id)) return;
+        if (dados.confirmados.includes(interaction.user.id)) return;
+        dados.confirmados.push(interaction.user.id);
+        if (dados.confirmados.length === 2) {
+            const pixM = bancoDadosPix.get(dados.mediador) || { chave: "Vazio", nome: "Vazio" };
+            const vFinal = (parseFloat(dados.valor.replace(',', '.')) + TAXA_ADM).toFixed(2);
+            await interaction.channel.send({ content: `**Pagar: R$ ${vFinal}**\n**Chave:** \`${pixM.chave}\`\n**Nome: ${pixM.nome}**` });
+        } else { await interaction.reply({ content: "✅ Confirmado!" }); }
+    }
+
+    if (interaction.customId === 'configurar_pix_btn') {
+        const modal = new ModalBuilder().setCustomId('modal_config_pix').setTitle('🔑 PIX');
+        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('chave_pix').setLabel('Chave').setStyle(TextInputStyle.Short)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('modelo_pix').setLabel('Tipo').setStyle(TextInputStyle.Short)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome_pix').setLabel('Nome').setStyle(TextInputStyle.Short)));
+        return await interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'entrar_mediacao' || interaction.customId === 'sair_mediacao') {
+        if (interaction.customId === 'entrar_mediacao') { if (!filaMediadores.includes(interaction.user.id)) filaMediadores.push(interaction.user.id); }
+        else { filaMediadores = filaMediadores.filter(id => id !== interaction.user.id); }
+        return interaction.update({ embeds: [criarEmbedAdm()] });
+    }
+
+    const partes = interaction.customId.split('_');
+    if (partes[0] === 'entrar' || partes[0] === 'sair') {
+        const [acao, cat, mod, val] = partes;
+        const idFila = `${cat}_${val}`;
+        if (acao === 'entrar') {
+            if (!filaMediadores.length) return interaction.reply({ content: "Sem Mediadores!", ephemeral: true });
+            if (!filas[idFila]) filas[idFila] = [];
+            filas[idFila].push({ id: interaction.user.id, modo: interaction.component.label });
+            if (filas[idFila].length >= 2) {
+                const j1 = filas[idFila].shift().id; const j2 = filas[idFila].shift().id;
+                await criarSalaAposta(interaction, [j1, j2], val, interaction.component.label, cat);
+            }
+        }
+        await interaction.update({ embeds: [criarEmbedFila(cat, interaction.component.label, val)] });
     }
 });
 
-client.login(TOKEN);
+async function criarSalaAposta(interaction, jogadores, valor, modo, categoria) {
+    try {
+        const canalDestino = interaction.guild.channels.cache.find(c => c.name.includes('sua-fila-aqui'));
+        const mediador = filaMediadores.shift(); filaMediadores.push(mediador);
+        const thread = await canalDestino.threads.create({ name: `AURA-${modo}-${valor}`, type: ChannelType.PrivateThread });
+        confirmacoesPartida.set(thread.id, { jogadores, confirmados: [], mediador, valor, modo });
+        for (const id of jogadores) await thread.members.add(id);
+        await thread.members.add(mediador);
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('confirmar_inicio').setLabel('Confirmar').setStyle(ButtonStyle.Success));
+        await thread.send({ content: `<@${jogadores[0]}> <@${jogadores[1]}>`, components: [row] });
+    } catch (e) {}
+}
+
+client.login("SEU_TOKEN_AQUI");
