@@ -302,4 +302,4 @@ async function criarSalaAposta(interaction, jogadores, valor, modo, categoria) {
     } catch (e) {}
 }
 
-client.login("MTQ3MzQwODMxOTQ1OTY4ODY4MQ.GW5vP5.MNErYaWpuI6MHgGcRQCbyWe2qk1MUe6Ky2epu8");
+client.login("SEU_TOKEN_AQUI");
